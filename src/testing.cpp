@@ -68,7 +68,7 @@ int main(int argc, char** argv)
 
         cv::drawChessboardCorners(img, patternSize, corners, patternFound);
         cv::imshow("chessboard detected", img);
-        cv::waitKey(1000);
+        cv::waitKey(100);
         i++;
     }
 
@@ -83,11 +83,28 @@ int main(int argc, char** argv)
     int flags = cv::CALIB_FIX_ASPECT_RATIO + cv::CALIB_FIX_K3 + cv::CALIB_ZERO_TANGENT_DIST +cv::CALIB_FIX_PRINCIPAL_POINT;
     cv::Size frameSize(1440, 1080);
 
-    float error = cv::calibrateCamera(objPoints, imgPoints, frameSize, cameraMatrix, distCoeffs, rvecs, tvecs, flags);///RO?
+    float error = cv::calibrateCamera(objPoints, imgPoints, frameSize, cameraMatrix, distCoeffs, rvecs, tvecs, flags);///RO? finds camera matrix
     
     std::cout << "Reprojection error: " << error << "\n cameraMatrix = \n"
               << cameraMatrix << "\n k = \n"
               << distCoeffs << std::endl;
+
+    cv::Mat mapX, mapY;
+    cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Matx33f::eye(),cameraMatrix, frameSize, CV_32FC1, mapX, mapY);
+
+    for (auto const &f : fileNames)
+    {
+        std::cout << std::string(f) << std::endl;
+        cv::Mat img = cv::imread(f, cv::IMREAD_COLOR);
+        cv::Mat imgUndist;
+        cv::remap(img, imgUndist, mapX, mapY, cv::INTER_LINEAR);
+        cv::imshow("undistorted image", imgUndist);
+        cv::waitKey(500);
+
+
+    }
+    
+
 
     /*cv::Mat cameraMatrix, distCoeffs, R, T;
     std::vector<cv::Mat> rvecs, tvecs;
