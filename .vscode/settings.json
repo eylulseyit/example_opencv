@@ -66,5 +66,6 @@
         "typeinfo": "cpp",
         "variant": "cpp"
     },
-    "cmake.sourceDirectory": "/home/eylul/example_opencv/src"
+    "cmake.sourceDirectory": "/home/eylul/example_opencv/src",
+    "cmake.configureOnOpen": true
 }
