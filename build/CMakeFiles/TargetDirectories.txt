@@ -1,3 +1,0 @@
-/home/eylul/example_opencv/build/CMakeFiles/opencv_example.dir
-/home/eylul/example_opencv/build/CMakeFiles/edit_cache.dir
-/home/eylul/example_opencv/build/CMakeFiles/rebuild_cache.dir

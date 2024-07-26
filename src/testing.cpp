@@ -8,11 +8,11 @@
 
 int main(int argc, char** argv)
 {
-    int checkerBoard[2] = {12, 8}; // Number of internal corners per a chessboard row and column
-    float fieldSize = 3.0f; // Real life size of each square in cm
+    int checkerBoard[2] = {9, 7}; // Number of internal corners per a chessboard row and column
+    float fieldSize = 3.25f; // Real life size of each square in cm
 
     std::vector<cv::String> fileNames;
-    cv::glob("../leftcamera/Im_L_*.png", fileNames, false); // Adjust the path as necessary
+    cv::glob("../imgexamples/left*.jpg", fileNames, false); // Adjust the path as necessary
 
     cv::Size patternSize(checkerBoard[0] - 1, checkerBoard[1] - 1);
     std::vector<std::vector<cv::Point2f>> imgPoints;
@@ -84,19 +84,32 @@ int main(int argc, char** argv)
         cv::Mat mapX, mapY;
         cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Matx33f::eye(), cameraMatrix, frameSize, CV_32FC1, mapX, mapY);
 
-        //int count = 1;//for download fixed files
+        int count = 1;//for download fixed files
         for (const auto& f : fileNames) {
             cv::Mat img = cv::imread(f, cv::IMREAD_COLOR);
             cv::Mat imgUndist;
             cv::remap(img, imgUndist, mapX, mapY, cv::INTER_LINEAR);
-            //cv::imwrite("/home/eylul/example_opencv/fixedimages\\frame%d.jpg" % count , imgUndist,);
+
+            std::ostringstream output_path;
+            output_path << "/home/eylul/example_opencv/fixedimages/img" << count << ".jpg";
+
+            // Save the fixed image to the specified path
+            bool result = cv::imwrite(output_path.str(), imgUndist);
+            //path = f
+            //cv::imwrite("/home/eylul/example_opencv/fixedimages\\frame%d.jpg" % count , imgUndist);
 
             cv::imshow("undistorted image", imgUndist);
-            cv::waitKey(500);
+            cv::waitKey(2000);
+            count++;
         }
     } else {
         std::cerr << "Not enough valid images for calibration." << std::endl;
     }
+
+    //myTest();
+
+
+
 
     return 0;
 }

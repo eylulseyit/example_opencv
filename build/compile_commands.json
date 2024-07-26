@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/home/eylul/example_opencv/build",
-  "command": "/usr/bin/g++ -isystem /usr/include/opencv4 -g -o CMakeFiles/opencv_example.dir/testing.cpp.o -c /home/eylul/example_opencv/src/testing.cpp",
-  "file": "/home/eylul/example_opencv/src/testing.cpp",
-  "output": "CMakeFiles/opencv_example.dir/testing.cpp.o"
-}
-]
