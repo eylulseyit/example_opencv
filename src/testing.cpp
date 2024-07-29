@@ -5,14 +5,27 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <iostream>
+#include <bits/stdc++.h>
+#include <opencv4/opencv2/opencv.hpp>
 
-int main(int argc, char** argv)
-{
+#include "opencv2/stitching.hpp"
+
+std::vector<cv::Point3f> createObjectPoints(int width, int height, float squareSize) {
+    std::vector<cv::Point3f> objectPoints;
+    for (int i = 0; i < height; ++i) {
+        for (int j = 0; j < width; ++j) {
+            objectPoints.emplace_back(j * squareSize, i * squareSize, 0.0f);
+        }
+    }
+    return objectPoints;
+}
+
+void calibration(){
     int checkerBoard[2] = {9, 7}; // Number of internal corners per a chessboard row and column
     float fieldSize = 3.25f; // Real life size of each square in cm
 
     std::vector<cv::String> fileNames;
-    cv::glob("../imgexamples/left*.jpg", fileNames, false); // Adjust the path as necessary
+    cv::glob("../imgexamples/left0*.jpg", fileNames, false); // Adjust the path as necessary
 
     cv::Size patternSize(checkerBoard[0] - 1, checkerBoard[1] - 1);
     std::vector<std::vector<cv::Point2f>> imgPoints;
@@ -20,12 +33,12 @@ int main(int argc, char** argv)
     cv::TermCriteria criteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001);
 
     // Preparing the object points
-    std::vector<cv::Point3f> objPoint;
-    for (int i = 0; i < checkerBoard[1] - 1; ++i) {
+    std::vector<cv::Point3f> objPoint = createObjectPoints(checkerBoard[0]-1, checkerBoard[1]-1, fieldSize);
+    /*for (int i = 0; i < checkerBoard[1] - 1; ++i) {
         for (int j = 0; j < checkerBoard[0] - 1; ++j) {
             objPoint.emplace_back(j * fieldSize, i * fieldSize, 0);
         }
-    }
+    }*/
 
     for (const auto& f : fileNames) {
         cv::Mat img = cv::imread(f);
@@ -36,7 +49,7 @@ int main(int argc, char** argv)
         cv::Mat gray;
         cv::cvtColor(img, gray, cv::COLOR_RGB2GRAY);
 
-        // Additional preprocessing
+        // Additional preprocessing 
         cv::equalizeHist(gray, gray);
         cv::GaussianBlur(gray, gray, cv::Size(5, 5), 0);
 
@@ -65,7 +78,9 @@ int main(int argc, char** argv)
 
     if (imgPoints.size() > 0) {
         cv::Size frameSize = cv::imread(fileNames[0]).size();
+        //cv:: Size& fs = frameSize*;
         double error = cv::calibrateCamera(objPoints, imgPoints, frameSize, cameraMatrix, distCoeffs, rvecs, tvecs, flags);
+        //double error = cv::fisheye::calibrate(objPoints, imgPoints, frameSize, cameraMatrix, distCoeffs, rvecs,tvecs,flags, cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 100, DBL_EPSILON));
 
         std::cout << "Reprojection error: " << error << "\ncameraMatrix = \n" << cameraMatrix << "\nk = \n" << distCoeffs << std::endl;
 
@@ -91,7 +106,7 @@ int main(int argc, char** argv)
             cv::remap(img, imgUndist, mapX, mapY, cv::INTER_LINEAR);
 
             std::ostringstream output_path;
-            output_path << "/home/eylul/example_opencv/fixedimages/img" << count << ".jpg";
+            output_path << "/home/eylul/example_opencv/fixedimages/a" << count << ".jpg";
 
             // Save the fixed image to the specified path
             bool result = cv::imwrite(output_path.str(), imgUndist);
@@ -105,11 +120,23 @@ int main(int argc, char** argv)
     } else {
         std::cerr << "Not enough valid images for calibration." << std::endl;
     }
+}
 
-    //myTest();
+int main(int argc, char** argv)
+{
+    cv::Mat img = cv::imread("../leftcamera/Im_L_1.png");
 
+    if (img.empty()) {
+        std::cerr << "Could not open or find the image" << std::endl;
+        return -1;
+    }
+    cv::Mat gray;
+    cv::cvtColor(img, gray, cv::COLOR_RGB2GRAY);
 
+    cv::Ptr<cv::SIFT> sift = cv::SIFT::create();
 
+    std::vector<cv::KeyPoint> keypoints;
+    sift->detect(gray, keypoints);
 
     return 0;
 }
