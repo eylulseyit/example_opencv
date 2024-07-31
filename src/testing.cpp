@@ -10,133 +10,124 @@
 
 #include "opencv2/stitching.hpp"
 
-std::vector<cv::Point3f> createObjectPoints(int width, int height, float squareSize) {
-    std::vector<cv::Point3f> objectPoints;
-    for (int i = 0; i < height; ++i) {
-        for (int j = 0; j < width; ++j) {
-            objectPoints.emplace_back(j * squareSize, i * squareSize, 0.0f);
-        }
+
+void stitching(cv::Mat img1, cv::Mat img2 ){
+    cv::Mat gray1, gray2;
+    cv::cvtColor(img1, gray1, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(img2, gray2, cv::COLOR_BGR2GRAY);
+
+    cv::Ptr<cv::SIFT> sift = cv::SIFT::create();
+
+    std::vector<cv::KeyPoint> keypoints1, keypoints2;
+    cv::Mat descriptors1, descriptors2;
+    sift->detectAndCompute(gray1, cv::noArray(), keypoints1, descriptors1);
+    sift->detectAndCompute(gray2, cv::noArray(), keypoints2, descriptors2);
+
+
+    cv::Mat img_keypoints1;
+    cv::drawKeypoints(img1, keypoints1, img_keypoints1, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);
+
+    cv::Mat img_keypoints2;
+    cv::drawKeypoints(img2, keypoints2, img_keypoints2, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);//buraya kadar ok
+
+    cv::imshow("Keypoints", img_keypoints1);
+    cv::waitKey(2000);
+    cv::imshow("Keypoints", img_keypoints2);
+    cv::waitKey(2000);
+
+    cv::FlannBasedMatcher matcher;
+    std::vector<cv::DMatch> matches;
+    matcher.match(descriptors1, descriptors2, matches);//RANSAC
+
+    std::cout<< matches.data();
+
+    sort(matches.begin(), matches.end());
+    const int numGoodMatches = matches.size() * 0.15;
+    matches.erase(matches.begin() + numGoodMatches, matches.end());
+    cv::Mat imgMatches;
+    drawMatches(img1, keypoints1, img2, keypoints2, matches, imgMatches);
+    resize(imgMatches, imgMatches, cv::Size(), 0.5, 0.5);
+    imshow("matches.jpg", imgMatches);
+    cv::waitKey(20000);
+
+    std::vector<cv::Point2f> points1, points2;
+    for (size_t i = 0; i < matches.size(); i++) {
+        points1.push_back(keypoints1[matches[i].queryIdx].pt);
+        points2.push_back(keypoints2[matches[i].trainIdx].pt);
     }
-    return objectPoints;
-}
+    cv::Mat H = findHomography(points1, points2, cv::RANSAC);
 
-void calibration(){
-    int checkerBoard[2] = {9, 7}; // Number of internal corners per a chessboard row and column
-    float fieldSize = 3.25f; // Real life size of each square in cm
+    cv::Mat img2Warped;
+    warpPerspective(img2, img2Warped, H, cv::Size(img1.cols + img2.cols, img1.rows));
 
-    std::vector<cv::String> fileNames;
-    cv::glob("../imgexamples/left0*.jpg", fileNames, false); // Adjust the path as necessary
+    // Create a mask for blending
+    cv::Mat mask1 = cv::Mat::ones(img1.size(), CV_8U) * 255;
+    cv::Mat mask2 = cv::Mat::ones(img2.size(), CV_8U) * 255;
+    warpPerspective(mask2, mask2, H, cv::Size(img1.cols + img2.cols, img1.rows));
 
-    cv::Size patternSize(checkerBoard[0] - 1, checkerBoard[1] - 1);
-    std::vector<std::vector<cv::Point2f>> imgPoints;
-    std::vector<std::vector<cv::Point3f>> objPoints;
-    cv::TermCriteria criteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 30, 0.001);
+    // Blend the images using multi-band blending
+    cv::Mat result(img1.rows, img1.cols + img2.cols, img1.type(), cv::Scalar::all(0));
+    img1.copyTo(result(cv::Rect(0, 0, img1.cols, img1.rows)));
+    img2Warped.copyTo(result(cv::Rect(0, 0, img2Warped.cols, img2Warped.rows)), mask2);
 
-    // Preparing the object points
-    std::vector<cv::Point3f> objPoint = createObjectPoints(checkerBoard[0]-1, checkerBoard[1]-1, fieldSize);
-    /*for (int i = 0; i < checkerBoard[1] - 1; ++i) {
-        for (int j = 0; j < checkerBoard[0] - 1; ++j) {
-            objPoint.emplace_back(j * fieldSize, i * fieldSize, 0);
-        }
-    }*/
+    // Save and display the result
+    imwrite("stitched.jpg", result);
+    resize(result, result, cv::Size(), 0.5, 0.5);
+    imshow("Stitched Image", result);
+    cv::waitKey(0);
 
-    for (const auto& f : fileNames) {
-        cv::Mat img = cv::imread(f);
-        if (img.empty()) {
-            std::cerr << "Error: Unable to open image " << f << std::endl;
-            continue;
-        }
-        cv::Mat gray;
-        cv::cvtColor(img, gray, cv::COLOR_RGB2GRAY);
 
-        // Additional preprocessing 
-        cv::equalizeHist(gray, gray);
-        cv::GaussianBlur(gray, gray, cv::Size(5, 5), 0);
 
-        std::vector<cv::Point2f> corners;
-        bool patternFound = cv::findChessboardCorners(gray, patternSize, corners, cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE);
-        if (patternFound) {
-            cv::cornerSubPix(gray, corners, cv::Size(11, 11), cv::Size(-1, -1), criteria);
-            imgPoints.push_back(corners);
-            objPoints.push_back(objPoint);
-        } else {
-            std::cout << "Checkerboard not found in image: " << f << std::endl;
-        }
 
-        cv::drawChessboardCorners(img, patternSize, corners, patternFound);
-        cv::imshow("chessboard detected", img);
-        cv::waitKey(100);
-    }
-
-    std::cout << "Number of valid images: " << imgPoints.size() << std::endl;
-
-    // Calibration
-    cv::Matx33f cameraMatrix = cv::Matx33f::eye();
-    std::vector<cv::Mat> rvecs, tvecs;
-    cv::Vec<float, 5> distCoeffs(0, 0, 0, 0, 0);
-    int flags = cv::CALIB_FIX_ASPECT_RATIO | cv::CALIB_FIX_K3 | cv::CALIB_ZERO_TANGENT_DIST | cv::CALIB_FIX_PRINCIPAL_POINT;
-
-    if (imgPoints.size() > 0) {
-        cv::Size frameSize = cv::imread(fileNames[0]).size();
-        //cv:: Size& fs = frameSize*;
-        double error = cv::calibrateCamera(objPoints, imgPoints, frameSize, cameraMatrix, distCoeffs, rvecs, tvecs, flags);
-        //double error = cv::fisheye::calibrate(objPoints, imgPoints, frameSize, cameraMatrix, distCoeffs, rvecs,tvecs,flags, cv::TermCriteria(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, 100, DBL_EPSILON));
-
-        std::cout << "Reprojection error: " << error << "\ncameraMatrix = \n" << cameraMatrix << "\nk = \n" << distCoeffs << std::endl;
-
-        // Reprojection error for each image
-        double totalError = 0;
-        for (size_t i = 0; i < objPoints.size(); ++i) {
-            std::vector<cv::Point2f> reprojectedPoints;
-            cv::projectPoints(objPoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs, reprojectedPoints);
-            double error = cv::norm(imgPoints[i], reprojectedPoints, cv::NORM_L2);
-            totalError += error * error;
-        }
-        double meanError = std::sqrt(totalError / objPoints.size());
-        std::cout << "Mean Reprojection Error: " << meanError << std::endl;
-
-        // Undistort images
-        cv::Mat mapX, mapY;
-        cv::initUndistortRectifyMap(cameraMatrix, distCoeffs, cv::Matx33f::eye(), cameraMatrix, frameSize, CV_32FC1, mapX, mapY);
-
-        int count = 1;//for download fixed files
-        for (const auto& f : fileNames) {
-            cv::Mat img = cv::imread(f, cv::IMREAD_COLOR);
-            cv::Mat imgUndist;
-            cv::remap(img, imgUndist, mapX, mapY, cv::INTER_LINEAR);
-
-            std::ostringstream output_path;
-            output_path << "/home/eylul/example_opencv/fixedimages/a" << count << ".jpg";
-
-            // Save the fixed image to the specified path
-            bool result = cv::imwrite(output_path.str(), imgUndist);
-            //path = f
-            //cv::imwrite("/home/eylul/example_opencv/fixedimages\\frame%d.jpg" % count , imgUndist);
-
-            cv::imshow("undistorted image", imgUndist);
-            cv::waitKey(2000);
-            count++;
-        }
-    } else {
-        std::cerr << "Not enough valid images for calibration." << std::endl;
-    }
 }
 
 int main(int argc, char** argv)
 {
-    cv::Mat img = cv::imread("../leftcamera/Im_L_1.png");
+    cv::Mat img1 = cv::imread("../stitching/left.jpg");
 
-    if (img.empty()) {
+    if (img1.empty()) {
         std::cerr << "Could not open or find the image" << std::endl;
         return -1;
     }
-    cv::Mat gray;
-    cv::cvtColor(img, gray, cv::COLOR_RGB2GRAY);
 
-    cv::Ptr<cv::SIFT> sift = cv::SIFT::create();
+    cv::Mat img2 = cv::imread("../stitching/right.jpg");
+    if (img1.empty()) {
+        std::cerr << "Could not open or find the image" << std::endl;
+        return -1;
+    }
 
-    std::vector<cv::KeyPoint> keypoints;
-    sift->detect(gray, keypoints);
+    stitching(img1, img2);
+    /*cv::Mat pano; CALISAN STITCHING
+    cv::Stitcher::Mode mode = cv::Stitcher::PANORAMA;
+ 
+// Array for pictures
+    std::vector<cv::Mat> imgs(2);
+    imgs[0] = img1;
+    imgs[1] = img2;
+
+     
+    // Create a Stitcher class object with mode panoroma
+    cv::Ptr<cv::Stitcher> stitcher = cv::Stitcher::create(mode);
+     
+    // Command to stitch all the images present in the image array
+    cv::Stitcher::Status status = stitcher->stitch(imgs, pano);
+ 
+    if (status != cv::Stitcher::OK)
+    {
+        // Check if images could not be stitched
+        // status is OK if images are stitched successfully
+        std::cout << "Can't stitch images\n";
+        return -1;
+    }
+     
+    // Store a new image stitched from the given 
+    //set of images as "result.jpg"
+    imwrite("result.jpg", pano);
+     
+    // Show the result
+    imshow("Result", pano);
+     
+    cv::waitKey(0);*/
 
     return 0;
 }
