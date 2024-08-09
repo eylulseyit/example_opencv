@@ -11,113 +11,6 @@
 
 #include "opencv2/stitching.hpp"
 
-cv::Mat blendImages(cv::Mat& img2, cv::Mat& img1, cv::Mat& H) {
-    // Warp the first image using the homography matrix
-    cv::Mat img1_warped;
-    cv::warpPerspective(img1, img1_warped, H, cv::Size(img1.cols + img2.cols, img1.rows));
-
-    cv::imshow("1warped", img1_warped);
-
-    // Create a mask for the warped image
-    cv::Mat mask1 = cv::Mat::zeros(img1_warped.size(), CV_8UC1);
-    cv::warpPerspective(cv::Mat::ones(img1.size(), CV_8UC1), mask1, H, cv::Size(img1.cols + img2.cols, img1.rows));
-
-    // Copy the second image into the warped image space
-    cv::Mat mask2 = cv::Mat::ones(img2.size(), CV_8UC1);
-    cv::Mat img2_warped = cv::Mat::zeros(img1_warped.size(), img1_warped.type());
-    img2.copyTo(img2_warped(cv::Rect(0, 0, img2.cols, img2.rows)));
-    mask2.copyTo(mask1(cv::Rect(0, 0, mask2.cols, mask2.rows)));
-
-    // Blend the images
-    cv::Mat result = cv::Mat::zeros(img1_warped.size(), img1_warped.type());
-    for (int y = 0; y < img1_warped.rows; y++) {
-        for (int x = 0; x < img1_warped.cols; x++) {
-            if (mask1.at<uchar>(y, x) == 0) {
-                result.at<cv::Vec3b>(y, x) = img2_warped.at<cv::Vec3b>(y, x);
-            } else if (mask1.at<uchar>(y, x) == 1) {
-                result.at<cv::Vec3b>(y, x) = img1_warped.at<cv::Vec3b>(y, x);
-            } else {
-                cv::Vec3b color1 = img1_warped.at<cv::Vec3b>(y, x);
-                cv::Vec3b color2 = img2_warped.at<cv::Vec3b>(y, x);
-                result.at<cv::Vec3b>(y, x) = (color1 + color2) / 2;
-            }
-        }
-    }
-
-    return result;
-}
-
-int stitchDiff(cv::Mat img1, cv::Mat img2){
-
-    if(img1.cols >1000 || img1.rows > 1000){
-        cv::Mat resizedImage;
-        cv::resize(img1, img1, cv::Size(img1.cols / 2, img1.rows / 2));
-        cv::resize(img2, img2, cv::Size(img2.cols / 2, img2.rows / 2));
-    }
-    // Detect ORB keypoints and descriptors
-    cv::Ptr<cv::ORB> orb = cv::ORB::create();
-    std::vector<cv::KeyPoint> keypoints1, keypoints2;
-    cv::Mat descriptors1, descriptors2;
-
-    orb->detectAndCompute(img1, cv::Mat(), keypoints1, descriptors1);
-    orb->detectAndCompute(img2, cv::Mat(), keypoints2, descriptors2);
-
-
-    // Convert descriptors to CV_32F
-    descriptors1.convertTo(descriptors1, CV_32F);
-    descriptors2.convertTo(descriptors2, CV_32F);
-
-    // Use FLANN based matcher
-    cv::BFMatcher matcher(cv::NORM_L2, true); // Using NORM_L2 and crossCheck set to true
-    std::vector<cv::DMatch> matches;
-    matcher.match(descriptors1, descriptors2, matches);//RANSAC
-
-    std::cout<< matches.data();
-
-    std::sort(matches.begin(), matches.end(), [](const cv::DMatch &a, const cv::DMatch &b) {
-    return a.distance < b.distance;
-    });
-
-    // Draw matches
-    cv::Mat img_matches;
-    cv::drawMatches(img1, keypoints1, img2, keypoints2, matches, img_matches, cv::Scalar::all(-1),
-                    cv::Scalar::all(-1), std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-
-    // Localize the object
-    std::vector<cv::Point2f> obj;
-    std::vector<cv::Point2f> scene;
-
-    for (size_t i = 0; i < matches.size(); i++) {
-        // Get the keypoints from the good matches
-        obj.push_back(keypoints1[matches[i].queryIdx].pt);
-        scene.push_back(keypoints2[matches[i].trainIdx].pt);
-    }
-
-    cv::Mat H = cv::findHomography(obj, scene, cv::RANSAC);
-    // Blend the images
-
-    cv::Mat img1_warped;
-    cv::warpPerspective(img1, img1_warped, H, cv::Size(img1.cols + img2.cols, img1.rows));
-
-    cv::imshow("1warped", img1_warped);
-
-    // Create a mask for the warped image
-    cv::Mat mask1 = cv::Mat::zeros(img1_warped.size(), CV_8UC1);
-    cv::warpPerspective(cv::Mat::ones(img1.size(), CV_8UC1), mask1, H, cv::Size(img1.cols + img2.cols, img1.rows));
-    cv::imshow("mask1", mask1);
-
-
-    // Copy the second image into the warped image space
-    cv::Mat mask2 = cv::Mat::ones(img2.size(), CV_8UC1);
-    cv::Mat img2_warped = cv::Mat::zeros(img1_warped.size(), img1_warped.type());
-    img2.copyTo(img2_warped(cv::Rect(0, 0, img2.cols, img2.rows)));
-    mask2.copyTo(mask1(cv::Rect(0, 0, mask2.cols, mask2.rows)));
-    cv::imshow("mask2",mask2);
-    cv::imshow("img2_warped",img2_warped);
-    cv::waitKey(0);
-    return 0;
-}
-
 cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     cv::Mat gray1, gray2;
     cv::cvtColor(img1, gray1, cv::COLOR_BGR2GRAY);
@@ -125,18 +18,18 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
 
     cv::Ptr<cv::SIFT> sift = cv::SIFT::create();
 
-    /*std::vector<cv::KeyPoint> keypoints1, keypoints2;
-    cv::Mat descriptors1, descriptors2;
-    sift->detectAndCompute(gray1, cv::noArray(), keypoints1, descriptors1);
-    sift->detectAndCompute(gray2, cv::noArray(), keypoints2, descriptors2);*/
-    //key points detection and descriptions are found in lastFramekeypoints* , lastFrameDescriptors* respectively.
-
-    cv::Ptr<cv::ORB> orb = cv::ORB::create();
     std::vector<cv::KeyPoint> keypoints1, keypoints2;
     cv::Mat descriptors1, descriptors2;
+    sift->detectAndCompute(gray1, cv::noArray(), keypoints1, descriptors1);
+    sift->detectAndCompute(gray2, cv::noArray(), keypoints2, descriptors2);
+    //key points detection and descriptions are found in lastFramekeypoints* , lastFrameDescriptors* respectively.
 
+    /*cv::Ptr<cv::ORB> orb = cv::ORB::create();
+    std::vector<cv::KeyPoint> keypoints1, keypoints2;
+    cv::Mat descriptors1, descriptors2;
     orb->detectAndCompute(img1, cv::Mat(), keypoints1, descriptors1);
-    orb->detectAndCompute(img2, cv::Mat(), keypoints2, descriptors2);
+    orb->detectAndCompute(img2, cv::Mat(), keypoints2, descriptors2);*/
+
 
 
     cv::Mat img_keypoints1;
@@ -200,6 +93,147 @@ void alphaBlend(cv::Mat& foreground, cv::Mat& background, cv::Mat& alpha, cv::Ma
      }
 }
 
+int blend(cv::Mat img1, cv::Mat img2){
+
+    cv::Mat g1 = img1.clone();
+    cv::Mat g2 = img2.clone();
+
+    std::vector<cv::Mat> gPyr1 = {g1};
+    std::vector<cv::Mat> gPyr2 = {g2};
+
+    for (int i = 0; i < 6; i++) {
+        cv::pyrDown(g1, g1);
+        gPyr1.push_back(g1);
+        cv::pyrDown(g2, g2);
+        gPyr2.push_back(g2);
+    }
+
+    std::vector<cv::Mat> lp1= {gPyr1[5]};
+    std::vector<cv::Mat> lp2= {gPyr2[5]};
+    for (int i = 5; i > 0; i--) {
+        cv::Mat GE1, L1;
+        cv::pyrUp(gPyr1[i], GE1, gPyr1[i-1].size());
+        cv::subtract(gPyr1[i-1], GE1, L1);
+        lp1.push_back(L1);
+
+        cv::Mat GE2, L2;
+        cv::pyrUp(gPyr2[i], GE2, gPyr2[i-1].size());
+        cv::subtract(gPyr2[i-1], GE2, L2);
+        lp2.push_back(L2);
+    }
+
+    // Now add left and right halves of images in each level
+    std::vector<cv::Mat> LS;
+    for (size_t i = 0; i < lp1.size(); i++) {
+        cv::Mat la = lp1[i];
+        cv::Mat lb = lp2[i];
+        cv::Mat ls;
+        cv::hconcat(la(cv::Rect(0, 0, la.cols / 2, la.rows)), 
+                    lb(cv::Rect(lb.cols / 2, 0, lb.cols / 2, lb.rows)), ls);
+        LS.push_back(ls);
+    }
+
+    // Now reconstruct
+    cv::Mat ls_ = LS[0];
+    for (size_t i = 1; i < LS.size(); i++) {
+        cv::pyrUp(ls_, ls_, LS[i].size());
+        cv::add(ls_, LS[i], ls_);
+    }
+
+    // Image with direct connecting each half
+    cv::Mat real;
+    cv::hconcat(img1(cv::Rect(0, 0, img1.cols / 2, img1.rows)), 
+                img2(cv::Rect(img2.cols / 2, 0, img2.cols / 2, img2.rows)), real);
+
+    // Save results
+
+    cv::imshow("Pyramid_blending2.jpg", ls_);
+    cv::imshow("Direct_blending.jpg", real);
+    cv::imwrite("Pyramid_blending2.jpg", ls_);
+    cv::imwrite("Direct_blending.jpg", real);
+
+    return 0;
+
+}
+
+void findCoord(int& xR, int xL, int sizeL, int sizeR){
+    int diff= sizeL+sizeR -(sizeL*2);
+    std::cout << "diff: " << diff << std::endl;
+    xR = xL-(sizeL -diff);
+}
+
+void counter(int& ctr, float& alpha){
+    
+    if(ctr ==10){
+        ctr = 1;
+        alpha = 0.1;
+    }
+    else{
+        ctr++;
+    }
+}
+
+void featherblend(cv::Mat& leftImg, cv::Mat rightImg){
+    int right_width = 20;
+    cv::Rect roi(leftImg.cols - right_width, 0, right_width, leftImg.rows);
+    cv::Mat submat = leftImg(roi);
+
+    /*cv::imshow("not warped",rightImgNotWarped);
+    cv::imshow("warped",rightImg);*/
+
+    cv::MatIterator_<cv::Vec3b> it; // = src_it.begin<cv::Vec3b>();
+    int ctr = 0;
+    float alpha = 0.1;//the percentage of blending
+    int index;
+    int xR;
+    int curRow = -1;//this is for fixing the alpha values
+    int count =0;
+  
+    //iterates the blending area(10 x pixels)
+    for (it = submat.begin<cv::Vec3b>(); it != submat.end<cv::Vec3b>(); ++it)
+    {
+        index = it - submat.begin<cv::Vec3b>();// for the coordinate of the current point
+
+        int y = index / submat.cols;  // Row coordinate of both images
+        int x = index % submat.cols;  // Column coordinate of left image
+
+        //findCoord(xR, xL,leftImg.rows, rightImg.rows);
+
+        
+        if(x != curRow){
+            curRow = x;
+            counter(ctr, alpha);
+        }
+        alpha *=ctr;
+        count++;
+
+        if(count == 23){
+            std::cout << "current count: " << count << std::endl;
+            std::cout << "left's row: " << curRow << std::endl;
+            std::cout << "right's x: " << x << std::endl;
+
+        
+            std::cout << "alpha: " << alpha << std::endl;
+            break;
+        }
+
+        cv::Vec3b pixel =rightImg.at<cv::Vec3b>(y, x);
+        if(pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 0){
+            continue;
+        }
+        (*it)[0] = static_cast<uchar>((1.0-alpha) * (*it)[0] + (alpha) * pixel[0]);
+        (*it)[1] = static_cast<uchar>((1.0-alpha) * (*it)[1] + (alpha) * pixel[1]);
+        (*it)[2] = static_cast<uchar>((1.0-alpha) * (*it)[2] + (alpha) * pixel[2]);
+        /*float perc = alpha* 255;
+
+        *it = (perc/255 *pixel ) + ((255 - perc)/255 * (*it));*/
+
+        /*(*it)[0] = static_cast<uchar>( ( ( (alpha*255) /255)  * ((*it)[0] )  )      +     ((alpha/255) * pixel[0]));
+        (*it)[1] = static_cast<uchar>( ( ( (1.0-alpha) /255)  * ((*it)[0] )  )      +     ((alpha/255) * pixel[0]));
+        (*it)[2] = static_cast<uchar>( ( ( (1.0-alpha) /255)  * ((*it)[0] )  )      +     ((alpha/255) * pixel[0]));*/
+    }
+}
+
 
 void stitch(cv::Mat img1, cv::Mat img2 )
 {
@@ -218,9 +252,11 @@ void stitch(cv::Mat img1, cv::Mat img2 )
     //make a black rectangle and make img2warped's left black(for the size of img1)
     //cv::Mat black = cv::Mat::zeros(img1.rows,img1.cols, img2Warped.type());
     //black.copyTo(img2Warped(cv::Rect(0, 0, black.cols, black.rows)));
-
+    
     //crop img2warped
-    img2Warped = img2Warped(cv::Range(0,img1.rows), cv::Range(img1.cols,img2Warped.cols));
+    cv:: Mat img2Warpedf = img2Warped.clone();
+    featherblend(img1, img2Warped);
+    img2Warped = img2Warped(cv::Range(0,img1.rows-10), cv::Range(img1.cols,img2Warped.cols));//extra 10 pixels for blending
     
 
     std::cout << "img1 Size: " << img1.cols << "x" << img1.rows << std::endl;
@@ -229,14 +265,18 @@ void stitch(cv::Mat img1, cv::Mat img2 )
     cv::imshow("img1", img1);
     cv::imshow("img2Warped", img2Warped);
     cv::waitKey(1000);
-
     
     // Create a result image to hold the stitched image
     cv::Mat result = cv::Mat::zeros(img1.rows, img2Warped.cols +img1.cols, img1.type()); //change it when change others(copyto kullandıgında)
     // Copy the first image into the result image
     std::cout << "result Size: " << result.cols << "x" << result.rows << std::endl;
     img1.copyTo(result(cv::Rect(0, 0, img1.cols, img1.rows)));
+
+
     img2Warped.copyTo(result(cv::Rect(img1.cols, 0, img2Warped.cols, img2Warped.rows)));
+
+    //blend(img1, img2Warped);
+
     //float alpha = 0.5;
     //addWeighted(result, alpha, img2Warped, 1-alpha, 0, result);
     //result = reverseAddWeighted(result);
@@ -245,10 +285,12 @@ void stitch(cv::Mat img1, cv::Mat img2 )
     cv::imshow("Stitched Image", result);
 
     imwrite("stitchedBF.jpg", result);
+
+
     cv::waitKey(0);
 }
 
-int stitching2(cv::Mat img1, cv::Mat img2){
+int stitching2(cv::Mat img1, cv::Mat img2){// stitching module from opencv
     cv::Mat pano;
     cv::Stitcher::Mode mode = cv::Stitcher::PANORAMA;
  
@@ -298,14 +340,14 @@ int videoOp(){
 
 int main(int argc, char** argv)
 {
-    cv::Mat img1 = cv::imread("../stitching/left.jpg");
+    cv::Mat img1 = cv::imread("../stitching/left3.jpg");
 
     if (img1.empty()) {
         std::cerr << "Could not open or find the image" << std::endl;
         return -1;
     }
 
-    cv::Mat img2 = cv::imread("../stitching/right.jpg");
+    cv::Mat img2 = cv::imread("../stitching/right3.jpg");
     if (img1.empty()) {
         std::cerr << "Could not open or find the image" << std::endl;
         return -1;
