@@ -38,10 +38,10 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     cv::Mat img_keypoints2;
     cv::drawKeypoints(img2, keypoints2, img_keypoints2, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);//buraya kadar ok
 
-    cv::imshow("Keypoints", img_keypoints1);
+    /*cv::imshow("Keypoints", img_keypoints1);
     cv::waitKey(2000);
     cv::imshow("Keypoints", img_keypoints2);
-    cv::waitKey(2000);
+    cv::waitKey(2000);*/
 
     cv::BFMatcher matcher(cv::NORM_L2, true); // Using NORM_L2 and crossCheck set to true
     std::vector<cv::DMatch> matches;
@@ -59,8 +59,8 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     cv::Mat imgMatches;
     drawMatches(img1, keypoints1, img2, keypoints2, matches, imgMatches);
     //resize(imgMatches, imgMatches, cv::Size(), 0.1, 0.1);
-    imshow("matches.jpg", imgMatches);
-    cv::waitKey(2000);
+    /*imshow("matches.jpg", imgMatches);
+    cv::waitKey(2000);*/
 
     std::vector<cv::Point2f> points1, points2;
     for (size_t i = 0; i < matches.size(); i++) {
@@ -69,28 +69,6 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     }
     cv::Mat H = findHomography(points2, points1, cv::RANSAC);
     return H;
-}
-
-void alphaBlend(cv::Mat& foreground, cv::Mat& background, cv::Mat& alpha, cv::Mat& outImage)
-{
-     // Find number of pixels.
-     int numberOfPixels = foreground.rows * foreground.cols * foreground.channels();
- 
-     // Get floating point pointers to the data matrices
-     float* fptr = reinterpret_cast<float*>(foreground.data);
-     float* bptr = reinterpret_cast<float*>(background.data);
-     float* aptr = reinterpret_cast<float*>(alpha.data);
-     float* outImagePtr = reinterpret_cast<float*>(outImage.data);
- 
-     // Loop over all pixesl ONCE
-     for(
-       int i = 0;
-       i < numberOfPixels;
-       i++, outImagePtr++, fptr++, aptr++, bptr++
-     )
-     {
-         *outImagePtr = (*fptr)*(*aptr) + (*bptr)*(1 - *aptr);
-     }
 }
 
 int blend(cv::Mat img1, cv::Mat img2){
@@ -162,11 +140,11 @@ void findCoord(int& xR, int xL, int sizeL, int sizeR){
     xR = xL-(sizeL -diff);
 }
 
-void counter(int& ctr, float& alpha){
+void counter(int& ctr, float& alpha, int width){
     
-    if(ctr ==10){
+    if(ctr >=10){
         ctr = 1;
-        alpha = 0.1;
+        alpha = 1/width;
     }
     else{
         ctr++;
@@ -174,76 +152,55 @@ void counter(int& ctr, float& alpha){
 }
 
 void featherblend(cv::Mat& leftImg, cv::Mat rightImg){
-    int right_width = 20;
-    cv::Rect roi(leftImg.cols - right_width, 0, right_width, leftImg.rows);
+
+    /*cv::imshow("img1", leftImg);
+    cv::imshow("img2", rightImg);*/
+    int width = 100;
+    cv::Rect roi(leftImg.cols - width, 0, width, leftImg.rows);
     cv::Mat submat = leftImg(roi);
 
     /*cv::imshow("not warped",rightImgNotWarped);
     cv::imshow("warped",rightImg);*/
+    //cv::imshow("warped",submat);
 
-    cv::MatIterator_<cv::Vec3b> it; // = src_it.begin<cv::Vec3b>();
-    int ctr = 0;
-    float alpha = 0.1;//the percentage of blending
+    float alpha;//the percentage of blending
     int index;
-    int xR;
     int curRow = -1;//this is for fixing the alpha values
-    int count =0;
-  
-    //iterates the blending area(10 x pixels)
-    for (it = submat.begin<cv::Vec3b>(); it != submat.end<cv::Vec3b>(); ++it)
+
+    cv::Vec3b * currentRow;
+    int a = leftImg.cols - width;
+    float halfWidth = width/2;
+
+    for (int j = 0; j < submat.rows; ++j)// for y axis
     {
-        index = it - submat.begin<cv::Vec3b>();// for the coordinate of the current point
-
-        int y = index / submat.cols;  // Row coordinate of both images
-        int x = index % submat.cols;  // Column coordinate of left image
-
-        //findCoord(xR, xL,leftImg.rows, rightImg.rows);
+        currentRow = submat.ptr<cv::Vec3b>(j);
+        alpha = 1.0f/width;
 
         
-        if(x != curRow){
-            curRow = x;
-            counter(ctr, alpha);
-        }
-        alpha *=ctr;
-        count++;
+        //std::cout << "a " << a<< std::endl;
 
-        if(count == 23){
-            std::cout << "current count: " << count << std::endl;
-            std::cout << "left's row: " << curRow << std::endl;
-            std::cout << "right's x: " << x << std::endl;
 
-        
-            std::cout << "alpha: " << alpha << std::endl;
-            break;
+        for (int i = 0; i < submat.cols; ++i)//for x axis
+        {
+            //std::cout << "alpha " << alpha<< std::endl;
+
+            cv::Vec3b pixel = rightImg.at<cv::Vec3b>(j, i+ a);
+            currentRow[i] = (alpha * pixel) + ((1.0f - alpha) * (currentRow[i]));
+
+            // Ramp up alpha from 1/width to 1, then ramp down back to 1/width
+                alpha = (i + 1) * (1.0f / width);  // Increment alpha up to 1
+            
         }
 
-        cv::Vec3b pixel =rightImg.at<cv::Vec3b>(y, x);
-        if(pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 0){
-            continue;
-        }
-        (*it)[0] = static_cast<uchar>((1.0-alpha) * (*it)[0] + (alpha) * pixel[0]);
-        (*it)[1] = static_cast<uchar>((1.0-alpha) * (*it)[1] + (alpha) * pixel[1]);
-        (*it)[2] = static_cast<uchar>((1.0-alpha) * (*it)[2] + (alpha) * pixel[2]);
-        /*float perc = alpha* 255;
 
-        *it = (perc/255 *pixel ) + ((255 - perc)/255 * (*it));*/
-
-        /*(*it)[0] = static_cast<uchar>( ( ( (alpha*255) /255)  * ((*it)[0] )  )      +     ((alpha/255) * pixel[0]));
-        (*it)[1] = static_cast<uchar>( ( ( (1.0-alpha) /255)  * ((*it)[0] )  )      +     ((alpha/255) * pixel[0]));
-        (*it)[2] = static_cast<uchar>( ( ( (1.0-alpha) /255)  * ((*it)[0] )  )      +     ((alpha/255) * pixel[0]));*/
     }
 }
 
 
-void stitch(cv::Mat img1, cv::Mat img2 )
+cv::Mat stitch(cv::Mat img1, cv::Mat img2, cv::Mat H )
 {
 
-    if(img1.cols >1000 || img1.rows > 1000){
-        cv::Mat resizedImage;
-        cv::resize(img1, img1, cv::Size(img1.cols / 2, img1.rows / 2));
-        cv::resize(img2, img2, cv::Size(img2.cols / 2, img2.rows / 2));
-    }
-    cv::Mat H = findHom(img1,img2);
+    
     // Warp the second image to the first
     cv::Mat img2Warped;
     warpPerspective(img2, img2Warped, H, cv::Size(img1.cols + img2.cols, img1.rows));
@@ -259,17 +216,17 @@ void stitch(cv::Mat img1, cv::Mat img2 )
     img2Warped = img2Warped(cv::Range(0,img1.rows-10), cv::Range(img1.cols,img2Warped.cols));//extra 10 pixels for blending
     
 
-    std::cout << "img1 Size: " << img1.cols << "x" << img1.rows << std::endl;
-    std::cout << "img2Warped Size: " << img2Warped.cols << "x" << img2Warped.rows << std::endl;
+    //std::cout << "img1 Size: " << img1.cols << "x" << img1.rows << std::endl;
+    //std::cout << "img2Warped Size: " << img2Warped.cols << "x" << img2Warped.rows << std::endl;
 
-    cv::imshow("img1", img1);
+    /*cv::imshow("img1", img1);
     cv::imshow("img2Warped", img2Warped);
-    cv::waitKey(1000);
+    cv::waitKey(1000);*/
     
     // Create a result image to hold the stitched image
     cv::Mat result = cv::Mat::zeros(img1.rows, img2Warped.cols +img1.cols, img1.type()); //change it when change others(copyto kullandıgında)
     // Copy the first image into the result image
-    std::cout << "result Size: " << result.cols << "x" << result.rows << std::endl;
+    //std::cout << "result Size: " << result.cols << "x" << result.rows << std::endl;
     img1.copyTo(result(cv::Rect(0, 0, img1.cols, img1.rows)));
 
 
@@ -282,12 +239,17 @@ void stitch(cv::Mat img1, cv::Mat img2 )
     //result = reverseAddWeighted(result);
     //blending!!
     // Blend overlapping regions
+
+
+
+
     cv::imshow("Stitched Image", result);
 
-    imwrite("stitchedBF.jpg", result);
+    //imwrite("stitchedBF.jpg", result);
 
 
     cv::waitKey(0);
+    return result;
 }
 
 int stitching2(cv::Mat img1, cv::Mat img2){// stitching module from opencv
@@ -326,12 +288,61 @@ int stitching2(cv::Mat img1, cv::Mat img2){// stitching module from opencv
 }
 
 int videoOp(){
-    cv::VideoCapture capLeft("../videos/Hill1.mp4");
-    cv::VideoCapture capRight("../videos/Hill2.mp4");
+    cv::VideoCapture capLeft("../videos/left.mp4");
+    cv::VideoCapture capRight("../videos/right.mp4");
     if(!capLeft.isOpened() | !capRight.isOpened()){
         std::cout << "Error opening video stream or file" << std::endl;
-    return -1;
+        return -1;
     }
+
+    // Capture the first frames
+    cv::Mat leftFrame, rightFrame;
+    capLeft >> leftFrame;
+    capRight >> rightFrame;
+
+    // Check if the first frames are successfully captured
+    if (leftFrame.empty() || rightFrame.empty()) {
+        std::cerr << "Error: Could not capture the first frames." << std::endl;
+        return -1;
+    }
+
+    // Compute the homography matrix using the first frames
+    cv::Mat H = findHom(leftFrame, rightFrame);
+
+    cv::Mat stitchedFrame;
+    while (true) {
+        // Capture frame-by-frame
+        capLeft >> leftFrame;
+        capRight >> rightFrame;
+
+        // If the frame is empty, break immediately
+        if (leftFrame.empty() || rightFrame.empty()) {
+            break;
+        }
+
+        
+        stitchedFrame = stitch(leftFrame, rightFrame, H);
+
+        // Display the stitched frame
+        cv::imshow("Stitched Video", stitchedFrame);
+
+        // Press 'q' to exit the loop
+        if (cv::waitKey(25) == 'q') {
+            break;
+        }
+        // Press 'q' to exit the loop
+        if (cv::waitKey(25) == 'q') {
+            break;
+        }
+    }
+
+    // When everything done, release the video capture object
+    capLeft.release();
+    capRight.release();
+
+    // Close all the frames
+    cv::destroyAllWindows();
+
 
     return 0;
 
@@ -351,12 +362,13 @@ int main(int argc, char** argv)
     if (img1.empty()) {
         std::cerr << "Could not open or find the image" << std::endl;
         return -1;
-    }
+    }  
 
-    stitch(img1, img2);
-    //stitchDiff(img1,img2);
+
+    cv::Mat H = findHom(img1,img2);
+
+    stitch(img1, img2, H);
     //videoOp();
-    
 
     return 0;
 }
