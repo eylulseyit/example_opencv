@@ -23,7 +23,8 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     sift->detectAndCompute(gray1, cv::noArray(), keypoints1, descriptors1);
     sift->detectAndCompute(gray2, cv::noArray(), keypoints2, descriptors2);
     //key points detection and descriptions are found in lastFramekeypoints* , lastFrameDescriptors* respectively.
-
+    
+    //another keypoint detection function usage for testing
     /*cv::Ptr<cv::ORB> orb = cv::ORB::create();
     std::vector<cv::KeyPoint> keypoints1, keypoints2;
     cv::Mat descriptors1, descriptors2;
@@ -38,6 +39,7 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     cv::Mat img_keypoints2;
     cv::drawKeypoints(img2, keypoints2, img_keypoints2, cv::Scalar::all(-1), cv::DrawMatchesFlags::DEFAULT);//buraya kadar ok
 
+    //seeing results for testing
     /*cv::imshow("Keypoints", img_keypoints1);
     cv::waitKey(2000);
     cv::imshow("Keypoints", img_keypoints2);
@@ -53,9 +55,11 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     return a.distance < b.distance;
     });
 
+    //optimizing the matchesPoints numbers, but later, I decided it doesn't matter
     //sort(matches.begin(), matches.end());
     //const int numGoodMatches = matches.size() * 0.50;
     //matches.erase(matches.begin() + numGoodMatches, matches.end());
+    
     cv::Mat imgMatches;
     drawMatches(img1, keypoints1, img2, keypoints2, matches, imgMatches);
     //resize(imgMatches, imgMatches, cv::Size(), 0.1, 0.1);
@@ -69,86 +73,6 @@ cv::Mat findHom(cv::Mat img1, cv::Mat img2){
     }
     cv::Mat H = findHomography(points2, points1, cv::RANSAC);
     return H;
-}
-
-int blend(cv::Mat img1, cv::Mat img2){
-
-    cv::Mat g1 = img1.clone();
-    cv::Mat g2 = img2.clone();
-
-    std::vector<cv::Mat> gPyr1 = {g1};
-    std::vector<cv::Mat> gPyr2 = {g2};
-
-    for (int i = 0; i < 6; i++) {
-        cv::pyrDown(g1, g1);
-        gPyr1.push_back(g1);
-        cv::pyrDown(g2, g2);
-        gPyr2.push_back(g2);
-    }
-
-    std::vector<cv::Mat> lp1= {gPyr1[5]};
-    std::vector<cv::Mat> lp2= {gPyr2[5]};
-    for (int i = 5; i > 0; i--) {
-        cv::Mat GE1, L1;
-        cv::pyrUp(gPyr1[i], GE1, gPyr1[i-1].size());
-        cv::subtract(gPyr1[i-1], GE1, L1);
-        lp1.push_back(L1);
-
-        cv::Mat GE2, L2;
-        cv::pyrUp(gPyr2[i], GE2, gPyr2[i-1].size());
-        cv::subtract(gPyr2[i-1], GE2, L2);
-        lp2.push_back(L2);
-    }
-
-    // Now add left and right halves of images in each level
-    std::vector<cv::Mat> LS;
-    for (size_t i = 0; i < lp1.size(); i++) {
-        cv::Mat la = lp1[i];
-        cv::Mat lb = lp2[i];
-        cv::Mat ls;
-        cv::hconcat(la(cv::Rect(0, 0, la.cols / 2, la.rows)), 
-                    lb(cv::Rect(lb.cols / 2, 0, lb.cols / 2, lb.rows)), ls);
-        LS.push_back(ls);
-    }
-
-    // Now reconstruct
-    cv::Mat ls_ = LS[0];
-    for (size_t i = 1; i < LS.size(); i++) {
-        cv::pyrUp(ls_, ls_, LS[i].size());
-        cv::add(ls_, LS[i], ls_);
-    }
-
-    // Image with direct connecting each half
-    cv::Mat real;
-    cv::hconcat(img1(cv::Rect(0, 0, img1.cols / 2, img1.rows)), 
-                img2(cv::Rect(img2.cols / 2, 0, img2.cols / 2, img2.rows)), real);
-
-    // Save results
-
-    cv::imshow("Pyramid_blending2.jpg", ls_);
-    cv::imshow("Direct_blending.jpg", real);
-    cv::imwrite("Pyramid_blending2.jpg", ls_);
-    cv::imwrite("Direct_blending.jpg", real);
-
-    return 0;
-
-}
-
-void findCoord(int& xR, int xL, int sizeL, int sizeR){
-    int diff= sizeL+sizeR -(sizeL*2);
-    std::cout << "diff: " << diff << std::endl;
-    xR = xL-(sizeL -diff);
-}
-
-void counter(int& ctr, float& alpha, int width){
-    
-    if(ctr >=10){
-        ctr = 1;
-        alpha = 1/width;
-    }
-    else{
-        ctr++;
-    }
 }
 
 void featherblend(cv::Mat& leftImg, cv::Mat rightImg){
@@ -200,15 +124,10 @@ void featherblend(cv::Mat& leftImg, cv::Mat rightImg){
 cv::Mat stitch(cv::Mat img1, cv::Mat img2, cv::Mat H )
 {
 
-    
     // Warp the second image to the first
     cv::Mat img2Warped;
     warpPerspective(img2, img2Warped, H, cv::Size(img1.cols + img2.cols, img1.rows));
     cv::waitKey(100);
-
-    //make a black rectangle and make img2warped's left black(for the size of img1)
-    //cv::Mat black = cv::Mat::zeros(img1.rows,img1.cols, img2Warped.type());
-    //black.copyTo(img2Warped(cv::Rect(0, 0, black.cols, black.rows)));
     
     //crop img2warped
     cv:: Mat img2Warpedf = img2Warped.clone();
@@ -231,16 +150,6 @@ cv::Mat stitch(cv::Mat img1, cv::Mat img2, cv::Mat H )
 
 
     img2Warped.copyTo(result(cv::Rect(img1.cols, 0, img2Warped.cols, img2Warped.rows)));
-
-    //blend(img1, img2Warped);
-
-    //float alpha = 0.5;
-    //addWeighted(result, alpha, img2Warped, 1-alpha, 0, result);
-    //result = reverseAddWeighted(result);
-    //blending!!
-    // Blend overlapping regions
-
-
 
 
     cv::imshow("Stitched Image", result);
@@ -285,67 +194,6 @@ int stitching2(cv::Mat img1, cv::Mat img2){// stitching module from opencv
      
     cv::waitKey(0);
     return 0;
-}
-
-int videoOp(){
-    cv::VideoCapture capLeft("../videos/left.mp4");
-    cv::VideoCapture capRight("../videos/right.mp4");
-    if(!capLeft.isOpened() | !capRight.isOpened()){
-        std::cout << "Error opening video stream or file" << std::endl;
-        return -1;
-    }
-
-    // Capture the first frames
-    cv::Mat leftFrame, rightFrame;
-    capLeft >> leftFrame;
-    capRight >> rightFrame;
-
-    // Check if the first frames are successfully captured
-    if (leftFrame.empty() || rightFrame.empty()) {
-        std::cerr << "Error: Could not capture the first frames." << std::endl;
-        return -1;
-    }
-
-    // Compute the homography matrix using the first frames
-    cv::Mat H = findHom(leftFrame, rightFrame);
-
-    cv::Mat stitchedFrame;
-    while (true) {
-        // Capture frame-by-frame
-        capLeft >> leftFrame;
-        capRight >> rightFrame;
-
-        // If the frame is empty, break immediately
-        if (leftFrame.empty() || rightFrame.empty()) {
-            break;
-        }
-
-        
-        stitchedFrame = stitch(leftFrame, rightFrame, H);
-
-        // Display the stitched frame
-        cv::imshow("Stitched Video", stitchedFrame);
-
-        // Press 'q' to exit the loop
-        if (cv::waitKey(25) == 'q') {
-            break;
-        }
-        // Press 'q' to exit the loop
-        if (cv::waitKey(25) == 'q') {
-            break;
-        }
-    }
-
-    // When everything done, release the video capture object
-    capLeft.release();
-    capRight.release();
-
-    // Close all the frames
-    cv::destroyAllWindows();
-
-
-    return 0;
-
 }
 
 
